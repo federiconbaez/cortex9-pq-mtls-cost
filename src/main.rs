@@ -10,13 +10,24 @@ fn usage() -> ! {
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let (mut group, mut resumption, mut n, mut warmup, mut label) = (None, false, 2000u64, 50u64, String::from("none"));
+    let (mut group, mut resumption, mut n, mut warmup, mut label) =
+        (None, false, 2000u64, 50u64, String::from("none"));
     while let Some(a) = args.next() {
         match a.as_str() {
             "--group" => group = args.next().and_then(|g| Group::parse(&g)),
             "--resumption" => resumption = true,
-            "-n" => n = args.next().and_then(|v| v.parse().ok()).unwrap_or_else(|| usage()),
-            "--warmup" => warmup = args.next().and_then(|v| v.parse().ok()).unwrap_or_else(|| usage()),
+            "-n" => {
+                n = args
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or_else(|| usage())
+            }
+            "--warmup" => {
+                warmup = args
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or_else(|| usage())
+            }
             "--label" => label = args.next().unwrap_or_else(|| usage()),
             _ => usage(),
         }

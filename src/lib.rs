@@ -21,7 +21,9 @@ use rustls::crypto::aws_lc_rs::{self as provider, kx_group};
 use rustls::crypto::{CryptoProvider, SupportedKxGroup};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer, ServerName};
 use rustls::server::{NoServerSessionStorage, WebPkiClientVerifier};
-use rustls::{ClientConfig, ClientConnection, HandshakeKind, RootCertStore, ServerConfig, ServerConnection};
+use rustls::{
+    ClientConfig, ClientConnection, HandshakeKind, RootCertStore, ServerConfig, ServerConnection,
+};
 use serde::Serialize;
 
 /// Grupo de intercambio de claves que ofrece el cliente (uno solo, para que no
@@ -175,7 +177,12 @@ pub enum ClientIdentity {
 }
 
 /// Cliente: ofrece un único grupo y presenta (o no) certificado.
-pub fn client_config(pki: &Pki, group: Group, resumption: bool, id: ClientIdentity) -> Arc<ClientConfig> {
+pub fn client_config(
+    pki: &Pki,
+    group: Group,
+    resumption: bool,
+    id: ClientIdentity,
+) -> Arc<ClientConfig> {
     let prov = provider_with(vec![group.kx()]);
     let b = ClientConfig::builder_with_provider(prov)
         .with_protocol_versions(&[&rustls::version::TLS13])
@@ -282,14 +289,24 @@ impl Server {
                 });
             }
         });
-        Server { addr, stop, cpu_us, ok, failed, handle: Some(handle) }
+        Server {
+            addr,
+            stop,
+            cpu_us,
+            ok,
+            failed,
+            handle: Some(handle),
+        }
     }
 
     /// Espera a que el servidor haya contabilizado `n` conexiones.
     pub fn wait_for(&self, n: u64) {
         let t = Instant::now();
         while self.ok.load(Ordering::SeqCst) + self.failed.load(Ordering::SeqCst) < n {
-            assert!(t.elapsed() < Duration::from_secs(30), "servidor no terminó {n} conexiones");
+            assert!(
+                t.elapsed() < Duration::from_secs(30),
+                "servidor no terminó {n} conexiones"
+            );
             std::thread::sleep(Duration::from_millis(1));
         }
     }
@@ -337,7 +354,14 @@ pub fn one_handshake(cfg: Arc<ClientConfig>, addr: SocketAddr) -> io::Result<Han
     tcp.set_read_timeout(Some(Duration::from_secs(10)))?;
     let name = ServerName::try_from("localhost").unwrap();
     let conn = ClientConnection::new(cfg, name).map_err(io::Error::other)?;
-    let mut tls = rustls::StreamOwned::new(conn, Counting { inner: tcp, rd: 0, wr: 0 });
+    let mut tls = rustls::StreamOwned::new(
+        conn,
+        Counting {
+            inner: tcp,
+            rd: 0,
+            wr: 0,
+        },
+    );
     tls.write_all(b"x")?;
     let mut b = [0u8; 1];
     tls.read_exact(&mut b)?;
@@ -398,7 +422,13 @@ pub fn percentile(sorted: &[u64], q: f64) -> u64 {
 /// Corre `n` handshakes secuenciales (más `warmup` descartados) y devuelve el
 /// reporte. Falla si algún handshake no negoció el grupo pedido o si, con
 /// resumption, alguno no se reanudó.
-pub fn run(pki: &Pki, group: Group, resumption: bool, n: u64, warmup: u64) -> Result<Report, String> {
+pub fn run(
+    pki: &Pki,
+    group: Group,
+    resumption: bool,
+    n: u64,
+    warmup: u64,
+) -> Result<Report, String> {
     let server = Server::start(server_config(pki, resumption));
     let ccfg = client_config(pki, group, resumption, ClientIdentity::Valid);
     let ch = client_hello_bytes(client_config(pki, group, false, ClientIdentity::Valid));
@@ -413,9 +443,14 @@ pub fn run(pki: &Pki, group: Group, resumption: bool, n: u64, warmup: u64) -> Re
     let cpu0 = thread_cpu_us();
     let t = Instant::now();
     for i in 0..n {
-        let h = one_handshake(ccfg.clone(), server.addr).map_err(|e| format!("handshake {i}: {e}"))?;
+        let h =
+            one_handshake(ccfg.clone(), server.addr).map_err(|e| format!("handshake {i}: {e}"))?;
         if h.group != Some(group.name()) {
-            return Err(format!("handshake {i}: grupo negociado {:?} != {}", h.group, group.name()));
+            return Err(format!(
+                "handshake {i}: grupo negociado {:?} != {}",
+                h.group,
+                group.name()
+            ));
         }
         if h.resumed {
             resumed += 1;
@@ -433,10 +468,14 @@ pub fn run(pki: &Pki, group: Group, resumption: bool, n: u64, warmup: u64) -> Re
     }
     let srv_cpu = server.cpu_us.load(Ordering::SeqCst) - srv_cpu0;
     if resumption && resumed != n {
-        return Err(format!("resumption pedida pero solo {resumed}/{n} se reanudaron"));
+        return Err(format!(
+            "resumption pedida pero solo {resumed}/{n} se reanudaron"
+        ));
     }
     if !resumption && resumed != 0 {
-        return Err(format!("resumption desactivada pero {resumed} se reanudaron"));
+        return Err(format!(
+            "resumption desactivada pero {resumed} se reanudaron"
+        ));
     }
     lat.sort_unstable();
     let us = |v: u64| v as f64 / 1000.0;

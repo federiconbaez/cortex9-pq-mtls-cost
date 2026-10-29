@@ -1,0 +1,67 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+env:
+  CARGO_TERM_COLOR: always
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked --release
+      - run: bash -n scripts/bench.sh scripts/netem.sh && python3 -m py_compile scripts/summarize.py
+
+  bench-loopback:
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: entorno
+        run: |
+          mkdir -p results/raw
+          { echo "runner: ubuntu-24.04 GitHub-hosted"; echo "kernel: $(uname -r)"; echo "cpu: $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | xargs)"; echo "nproc: $(nproc)"; rustc --version; } | tee results/raw/ci-env.txt
+      - name: bench sin netem
+        run: N=5000 WARMUP=100 REPS=5 scripts/bench.sh ci-loopback
+      - run: python3 scripts/summarize.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: results-loopback
+          path: results/raw/
+
+  bench-netem:
+    needs: test
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [rtt10, rtt10-mtu1500, rtt10-loss1]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release --locked
+      - name: cargar sch_netem (falla si no existe)
+        run: |
+          sudo modprobe sch_netem || { sudo apt-get update && sudo apt-get install -y "linux-modules-extra-$(uname -r)" && sudo modprobe sch_netem; }
+      - name: aplicar netem ${{ matrix.profile }}
+        run: sudo scripts/netem.sh apply ${{ matrix.profile }}
+      - name: bench con netem
+        run: N=600 WARMUP=20 REPS=3 scripts/bench.sh ci-${{ matrix.profile }}
+      - name: quitar netem
+        if: always()
+        run: sudo scripts/netem.sh clear
+      - name: resumen (falla si p50 < 2*RTT, es decir si netem no actuó)
+        run: python3 scripts/summarize.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.profile }}
+          path: results/raw/

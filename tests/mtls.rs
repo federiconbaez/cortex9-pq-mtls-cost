@@ -9,7 +9,8 @@ fn negocia_el_grupo_pedido_en_ambos_modos() {
     let p = pki();
     for g in [Group::X25519, Group::X25519MlKem768] {
         let srv = Server::start(server_config(&p, false));
-        let h = one_handshake(client_config(&p, g, false, ClientIdentity::Valid), srv.addr).unwrap();
+        let h =
+            one_handshake(client_config(&p, g, false, ClientIdentity::Valid), srv.addr).unwrap();
         assert_eq!(h.group, Some(g.name()));
         assert!(!h.resumed);
     }
@@ -19,8 +20,14 @@ fn negocia_el_grupo_pedido_en_ambos_modos() {
 fn servidor_rechaza_cliente_sin_certificado() {
     let p = pki();
     let srv = Server::start(server_config(&p, false));
-    let r = one_handshake(client_config(&p, Group::X25519MlKem768, false, ClientIdentity::None), srv.addr);
-    assert!(r.is_err(), "mTLS no exigido: el cliente sin certificado recibió eco");
+    let r = one_handshake(
+        client_config(&p, Group::X25519MlKem768, false, ClientIdentity::None),
+        srv.addr,
+    );
+    assert!(
+        r.is_err(),
+        "mTLS no exigido: el cliente sin certificado recibió eco"
+    );
     srv.wait_for(1);
     assert_eq!(srv.ok.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
@@ -29,7 +36,10 @@ fn servidor_rechaza_cliente_sin_certificado() {
 fn servidor_rechaza_cliente_de_otra_ca() {
     let p = pki();
     let srv = Server::start(server_config(&p, false));
-    let r = one_handshake(client_config(&p, Group::X25519, false, ClientIdentity::Rogue), srv.addr);
+    let r = one_handshake(
+        client_config(&p, Group::X25519, false, ClientIdentity::Rogue),
+        srv.addr,
+    );
     assert!(r.is_err(), "cliente firmado por otra CA aceptado");
     srv.wait_for(1);
     assert_eq!(srv.failed.load(std::sync::atomic::Ordering::SeqCst), 1);
@@ -67,8 +77,18 @@ fn clienthello_hibrido_crece_por_la_clave_mlkem() {
     // ML-KEM-768 encapsulation key = 1184 bytes (FIPS 203); el key share
     // híbrido es mlkem_ek || x25519 (1184 + 32) contra 32 de X25519 solo.
     let p = pki();
-    let a = client_hello_bytes(client_config(&p, Group::X25519, false, ClientIdentity::Valid));
-    let b = client_hello_bytes(client_config(&p, Group::X25519MlKem768, false, ClientIdentity::Valid));
+    let a = client_hello_bytes(client_config(
+        &p,
+        Group::X25519,
+        false,
+        ClientIdentity::Valid,
+    ));
+    let b = client_hello_bytes(client_config(
+        &p,
+        Group::X25519MlKem768,
+        false,
+        ClientIdentity::Valid,
+    ));
     assert_eq!(b - a, 1184, "x25519={a} híbrido={b}");
 }
 
