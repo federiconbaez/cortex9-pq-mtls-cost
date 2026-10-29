@@ -1,0 +1,5 @@
+runner: ubuntu-24.04 GitHub-hosted
+kernel: 7.0.0-1017-azure
+cpu: AMD EPYC 9V45 96-Core Processor
+nproc: 4
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
